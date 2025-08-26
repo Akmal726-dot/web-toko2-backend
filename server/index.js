@@ -1,25 +1,65 @@
 import express from "express";
-import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
-import productRoutes from "../routes/products.js";
-import authRoutes from "../routes/auth.js";
+import pool from "../config/koneksi.js"; // pastikan file koneksi benar
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 5000;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "../public")));
 
-app.use("/api/products", productRoutes);
-app.use("/api/auth", authRoutes);
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../public/index.html"));
+// ✅ Cek koneksi DB
+app.get("/api/dbcheck", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json({ status: "DB Connected", waktu: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.listen(PORT, () => console.log(`✅ Server berjalan di http://localhost:${PORT}`));
+// ✅ GET all products
+app.get("/api/products", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM products ORDER BY id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ GET product by ID
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query("SELECT * FROM products WHERE id=$1", [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ POST product
+app.post("/api/products", async (req, res) => {
+  try {
+    const { name, price, category } = req.body;
+
+    if (!name || !price || !category) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const result = await pool.query(
+      "INSERT INTO products (name, price, category) VALUES ($1,$2,$3) RETURNING *",
+      [name, price, category]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
